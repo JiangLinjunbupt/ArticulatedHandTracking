@@ -4,8 +4,29 @@ HandModel::HandModel()
 {
 	this->LoadModel();
 	std::cout << "Load Model success "<<std::endl;
-}
 
+
+	//设置一些初始值
+	for (int i = 1; i < this->Kintree_table.cols(); ++i) this->Parent[i] = this->Kintree_table(0, i);
+
+	//控制手模位置、手型、状态的参数，初始都设置为0
+	this->trans = Eigen::Vector3f::Zero();
+	this->betas = Eigen::VectorXf::Zero(this->Num_betas);
+	this->pose = Eigen::VectorXf::Zero(this->Num_WristPose + this->Num_FingerPose);
+
+	this->Full_Hand_Params = Eigen::VectorXf::Zero(this->Num_WristParams + this->Num_FingerParams);
+
+	this->V_shaped = Eigen::MatrixXf::Zero(this->Vertex_num, 3);
+	this->J_shaped = Eigen::MatrixXf::Zero(this->Joints_num, 3);
+	this->V_posed = Eigen::MatrixXf::Zero(this->Vertex_num, 3);
+	this->V_Final = Eigen::MatrixXf::Zero(this->Vertex_num, 3);
+
+	this->set_Shape_Params(Eigen::VectorXf::Zero(this->Num_betas));
+	this->UpdataModel();
+
+	std::cout << "Model Init Successed\n";
+
+}
 
 
 #pragma region LoadFunctions
@@ -35,6 +56,7 @@ void HandModel::LoadModel()
 	this->Load_Shapedirs(shapedirs_filename.c_str());
 	this->Load_V_template(v_template_filename.c_str());
 	this->Load_Weights(weights_filename.c_str());
+
 }
 
 void HandModel::Load_J(const char* filename)
@@ -57,6 +79,8 @@ void HandModel::Load_J_regressor(const char* filename)
 {
 	//这里注意加载的是稀疏矩阵，参考：
 	//https://my.oschina.net/cvnote/blog/166980   或者  https://blog.csdn.net/xuezhisdc/article/details/54631490
+	//Sparse Matrix转Dense Matrix ： MatrixXd dMat; dMat = MatrixXd(spMat);  可以方便观察
+	//Dense Matrix转Sparse Matrix : SparseMatrix<double> spMat; spMat = dMat.sparseView(); 
 
 	std::vector < Eigen::Triplet <float> > triplets;
 
@@ -179,18 +203,18 @@ void HandModel::Load_Posedirs(const char* filename)
 
 	int dim1, dim2, dim3;
 	f >> dim1 >> dim2 >> dim3;
-	this->Posedirs.resize(dim1);
-	for (int d1 = 0; d1 < dim1; ++d1)
+	this->Posedirs.resize(dim3);
+	for (int d3 = 0; d3 < dim3; ++d3)
 	{
-		Eigen::MatrixXf tem = Eigen::MatrixXf::Zero(dim2, dim3);
-		for (int d2 = 0; d2 < dim2; ++d2)
+		Eigen::MatrixXf tem = Eigen::MatrixXf::Zero(dim1, dim2);
+		for (int d1 = 0; d1 < dim1; ++d1)
 		{
-			for (int d3 = 0; d3 < dim3; ++d3)
+			for (int d2 = 0; d2 < dim2; ++d2)
 			{
-				f >> tem(d2, d3);
+				f >> tem(d1, d2);
 			}
 		}
-		this->Posedirs[d1] = tem;
+		this->Posedirs[d3] = tem;
 	}
 
 	f.close();
@@ -205,18 +229,19 @@ void HandModel::Load_Shapedirs(const char* filename)
 
 	int dim1, dim2, dim3;
 	f >> dim1 >> dim2 >> dim3;
-	this->Shapedirs.resize(dim1);
-	for (int d1 = 0; d1 < dim1; ++d1)
+	this->Shapedirs.resize(dim3);
+
+	for (int d3 = 0; d3 < dim3; ++d3)
 	{
-		Eigen::MatrixXf tem = Eigen::MatrixXf::Zero(dim2, dim3);
-		for (int d2 = 0; d2 < dim2; ++d2)
+		Eigen::MatrixXf tem = Eigen::MatrixXf::Zero(dim1, dim2);
+		for (int d1 = 0; d1 < dim1; ++d1)
 		{
-			for (int d3 = 0; d3 < dim3; ++d3)
+			for (int d2 = 0; d2 < dim2; ++d2)
 			{
-				f >> tem(d2, d3);
+				f >> tem(d1, d2);
 			}
 		}
-		this->Shapedirs[d1] = tem;
+		this->Shapedirs[d3] = tem;
 	}
 
 	f.close();
@@ -257,7 +282,216 @@ void HandModel::Load_Weights(const char* filename)
 		}
 	}
 	f.close();
-	std::cout << this->Weights << std::endl;
+
 	std::cout << "Load Weights success\n";
 }
 #pragma endregion LoadFunctions
+
+
+void HandModel::UpdataModel()
+{
+	this->Full_Hand_Params.setZero();
+
+	//通过Pose构造Full_Hand_Pose
+	Eigen::MatrixXf selected_hands_component = this->Hands_components.topRows(this->Num_FingerPose);
+	this->Full_Hand_Params.segment(this->Num_WristParams, this->Num_FingerParams) = selected_hands_component.transpose()*this->pose.segment(this->Num_WristPose, this->Num_FingerPose) + this->Hands_mean;
+
+	this->Updata_V_rest();
+	this->LBS_Updata();
+
+}
+
+
+void HandModel::Updata_V_rest()
+{
+
+	if (want_shapemodel && change_shape) this->ShapeSpaceBlend();
+
+	this->PoseSpaceBlend();
+}
+void HandModel::ShapeSpaceBlend()
+{
+	this->V_shaped = this->V_template;
+
+	for (int i = 0; i < this->Num_betas; ++i)
+	{
+		this->V_shaped += this->Shapedirs[i] * betas[i];
+	}
+
+	this->J_shaped = this->J_regressor*this->V_shaped;
+
+	this->change_shape = false;
+}
+void HandModel::PoseSpaceBlend()
+{
+	this->V_posed = this->V_shaped;
+	
+	std::vector<float> pose_vec = lortmin(this->Full_Hand_Params.segment(this->Num_WristParams,this->Num_FingerParams));
+
+	for (int i = 0; i < pose_vec.size(); ++i)
+	{
+		this->V_posed += this->Posedirs[i] * pose_vec[i];
+	}
+}
+
+void HandModel::LBS_Updata()
+{
+
+	std::vector<Eigen::Matrix4f> result(this->Joints_num, Eigen::Matrix4f::Identity());
+
+	result[0].block(0, 0, 3, 3) = rodrigues(this->Full_Hand_Params[0], this->Full_Hand_Params[1], this->Full_Hand_Params[2]);
+	result[0].block(0, 3, 3, 1) = J_shaped.row(0).transpose();
+
+
+	for (int i = 1; i < this->Kintree_table.cols(); ++i)
+	{
+		Eigen::Matrix4f temp = Eigen::Matrix4f::Identity();
+		temp.block(0, 0, 3, 3) = rodrigues(this->Full_Hand_Params[i * 3 + 0], this->Full_Hand_Params[i * 3 + 1], this->Full_Hand_Params[i * 3 + 2]);
+		temp.block(0, 3, 3, 1) = (J_shaped.row(i) - J_shaped.row(this->Parent[i])).transpose();
+
+		result[i] = result[this->Parent[i]] * temp;
+	}
+
+
+	std::vector<Eigen::Matrix4f> result2(result);
+	for (int i = 0; i < result.size(); ++i)
+	{
+		Eigen::MatrixXf tmp = result[i].block(0, 0, 3, 3)*(J_shaped.row(i).transpose());
+
+		result2[i].block(0, 3, 3, 1) -= tmp;
+	}
+
+	std::vector<Eigen::Matrix4f> T(this->Weights.rows(), Eigen::Matrix4f::Zero());
+
+	for (int i = 0; i < T.size(); ++i)
+	{
+		Eigen::Matrix4f temp = Eigen::Matrix4f::Zero();
+
+		for (int j = 0; j < result2.size(); ++j)
+		{
+			temp += result2[j] * this->Weights(i, j);
+		}
+		T[i] = temp;
+	}
+
+	this->V_Final.setZero();
+
+	for (int i = 0; i < this->Vertex_num; ++i)
+	{
+		Eigen::Vector4f temp(this->V_posed.row(i)(0), this->V_posed.row(i)(1), this->V_posed.row(i)(2), 1);
+		this->V_Final.row(i) = ((T[i] * temp).segment(0, 3)).transpose() + this->trans.transpose();
+	}
+
+
+}
+
+
+void HandModel::Save_as_obj()
+{
+	std::ofstream f;
+	f.open("MANO_HandModel.obj");
+	if (!f.is_open())  std::cout << "Can not Save to .obj file, The file can not open ！！！\n";
+
+	for (int i = 0; i < this->Vertex_num; ++i)
+	{
+		f << "v " << this->V_Final(i, 0) << " " << this->V_Final(i, 1) << " " << this->V_Final(i, 2) << std::endl;
+	}
+
+	for (int i = 0; i < this->Face_num; ++i)
+	{
+		f << "f " << (this->F(i, 0) + 1) << " " << (this->F(i, 1) + 1) << " " << (this->F(i, 2) + 1) << std::endl;
+	}
+	f.close();
+	std::cout << "Save to MANO_HandModel.obj success\n";
+}
+//void HandModel::Change()
+//{
+//
+//	this->Full_Hand_Pose.setZero();
+//
+//
+//	Eigen::MatrixXf selected_hands_component = this->Hands_components.topRows(this->Num_Pose);
+//	this->Full_Hand_Pose.segment(3, (this->Num_Params-3)) = selected_hands_component.transpose()*this->pose.segment(3, this->Num_Pose) + this->Hands_mean;
+//
+//
+//	Eigen::MatrixXf v_shaped = this->V_template;
+//	Eigen::MatrixXf J_shaped = Eigen::MatrixXf::Zero(this->Joints_num, 3);
+//
+//	Eigen::MatrixXf v_posed = Eigen::MatrixXf::Zero(this->Vertex_num, 3);
+//
+//	if (want_shapemodel)
+//	{
+//		for (int i = 0; i < betas.size(); ++i)
+//		{
+//			v_shaped += this->Shapedirs[i] * betas[i];
+//		}
+//
+//		J_shaped = this->J_regressor*v_shaped;
+//
+//	}
+//
+//
+//	v_posed += v_shaped;
+//
+//	std::vector<float> pose_vec = lortmin(this->Full_Hand_Pose.segment(3, 45));
+//
+//	for (int i = 0; i < pose_vec.size(); ++i)
+//	{
+//		v_posed += this->Posedirs[i] * pose_vec[i];
+//	}
+//
+//
+//
+//
+//
+//	std::vector<Eigen::Matrix4f> result(16,Eigen::Matrix4f::Identity());
+//
+//	result[0].block(0, 0, 3, 3) = rodrigues(this->Full_Hand_Pose[0], this->Full_Hand_Pose[1], this->Full_Hand_Pose[2]);
+//	result[0].block(0, 3, 3, 1) = J_shaped.row(0).transpose();
+//
+//
+//	for (int i = 1; i < this->Kintree_table.cols(); ++i)
+//	{
+//		Eigen::Matrix4f temp = Eigen::Matrix4f::Identity();
+//		temp.block(0, 0, 3, 3) = rodrigues(this->Full_Hand_Pose[i * 3 + 0], this->Full_Hand_Pose[i * 3 + 1], this->Full_Hand_Pose[i * 3 + 2]);
+//		temp.block(0, 3, 3, 1) = (J_shaped.row(i) - J_shaped.row(this->Parent[i])).transpose();
+//
+//		result[i] = result[this->Parent[i]] * temp;
+//	}
+//
+//
+//	std::vector<Eigen::Matrix4f> result2(result);
+//	for (int i = 0; i < result.size(); ++i)
+//	{
+//		Eigen::MatrixXf tmp = result[i].block(0, 0, 3, 3)*(J_shaped.row(i).transpose());
+//
+//		result2[i].block(0, 3, 3, 1) -= tmp;
+//	}
+//
+//
+//	std::vector<Eigen::Matrix4f> T(this->Weights.rows(), Eigen::Matrix4f::Zero());
+//
+//	for (int i = 0; i < T.size(); ++i)
+//	{
+//		Eigen::Matrix4f temp = Eigen::Matrix4f::Zero();
+//
+//		for (int j = 0; j < result2.size(); ++j)
+//		{
+//			temp += result2[j]*this->Weights(i, j);
+//		}
+//		T[i] = temp;
+//	}
+//
+//
+//	Eigen::MatrixXf v_final = Eigen::MatrixXf::Zero(this->Vertex_num, 3);
+//
+//	for (int i = 0; i < this->Vertex_num; ++i)
+//	{
+//
+//		Eigen::Vector4f temp(v_posed.row(i)(0), v_posed.row(i)(1), v_posed.row(i)(2), 1);
+//		v_final.row(i) = ((T[i] * temp).segment(0, 3)).transpose();
+//	}
+//
+//
+//
+//}
