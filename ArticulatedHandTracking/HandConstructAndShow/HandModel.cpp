@@ -5,7 +5,7 @@ HandModel::HandModel()
 	this->LoadModel();
 	std::cout << "Load Model success "<<std::endl;
 
-
+	this->V_Final_array = new float[this->Vertex_num * 3];
 	//设置一些初始值
 	for (int i = 1; i < this->Kintree_table.cols(); ++i) this->Parent[i] = this->Kintree_table(0, i);
 
@@ -111,10 +111,20 @@ void HandModel::Load_F(const char* filename)
 	if (!f.is_open())  std::cerr << "Load  Face  error,  can not open this file !!! \n";
 
 	f >> this->Face_num;
-	this->F = Eigen::MatrixXf::Zero(this->Face_num, 3);
+	this->F = Eigen::MatrixXi::Zero(this->Face_num, 3);
+	this->F_array = new unsigned int[this->Face_num * 3]();
+
 	for (int i = 0; i < this->Face_num; ++i)
 	{
-		f >> this->F(i, 0) >> this->F(i, 1) >> this->F(i, 2);
+		int index1, index2, index3;
+		f >> index1 >> index2 >> index3;
+		this->F(i, 0) = index1;
+		this->F(i, 1) = index2;
+		this->F(i, 2) = index3;
+
+		this->F_array[i * 3 + 0] = index1;
+		this->F_array[i * 3 + 1] = index2;
+		this->F_array[i * 3 + 2] = index3;
 	}
 	f.close();
 
@@ -298,7 +308,6 @@ void HandModel::UpdataModel()
 
 	this->Updata_V_rest();
 	this->LBS_Updata();
-
 }
 
 

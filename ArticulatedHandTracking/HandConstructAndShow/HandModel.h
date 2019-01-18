@@ -13,7 +13,8 @@ class HandModel
 {
 public:
 	//这些都是从文件中读出来的, 只暴露face
-	Eigen::MatrixXf F;
+	Eigen::MatrixXi F;
+	unsigned int *F_array;
 
 	int Joints_num;
 	int Vertex_num;
@@ -21,6 +22,8 @@ public:
 
 	//计算出来的值
 	Eigen::MatrixXf V_Final;   //经过pose和trans之后的某个姿态下的顶点
+	float *V_Final_array;
+
 	Eigen::MatrixXf J_Final;   //经过pose和trans之后某个姿态下的关节点
 
 private:
@@ -84,7 +87,15 @@ public:
 	}
 	void set_trans_Params(float x, float y, float z) { this->trans[0] = x; this->trans[1] = y; this->trans[2] = z; }
 
-
+	void serializeModel()
+	{
+		for (int i = 0; i < this->Vertex_num; ++i)
+		{
+			this->V_Final_array[i * 3 + 0] = this->V_Final(i, 0) * 10.0f;
+			this->V_Final_array[i * 3 + 1] = this->V_Final(i, 1) * 10.0f;
+			this->V_Final_array[i * 3 + 2] = this->V_Final(i, 2) * 10.0f;
+		}
+	}
 	void Save_as_obj();
 
 private:
