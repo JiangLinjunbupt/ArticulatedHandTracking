@@ -1,7 +1,8 @@
 #pragma once
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 #include"HandModel.h"
 #include <glm/glm.hpp>
@@ -20,6 +21,7 @@ namespace DisPlay_ReSult
 	void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 	void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 	void processInput(GLFWwindow *window);
+	unsigned int loadTexture(char const * path);
 
 	// settings
 	unsigned int SCR_WIDTH = 640 * 2;
@@ -39,6 +41,7 @@ namespace DisPlay_ReSult
 	unsigned int vao, vbo, ebo;
 
 	Shader *ourShader;
+	unsigned int Material_texture;
 
 	GLFWwindow* window;
 	int init()
@@ -86,17 +89,30 @@ namespace DisPlay_ReSult
 
 		glBindVertexArray(vao);
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(float)*handmodel->Vertex_num * 3, NULL, GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(float)*handmodel->Vertex_num * 6, NULL, GL_STATIC_DRAW);
 
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int)*handmodel->Face_num*3, handmodel->F_array, GL_STATIC_DRAW);
 
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)(sizeof(float)*handmodel->Vertex_num*3));
+		glEnableVertexAttribArray(1);
 
 
+		Material_texture = loadTexture("skin.png");
 
 		ourShader = new Shader("vertex.glsl", "fragment.glsl");
+		ourShader->use();
+		ourShader->setInt("material.Material_texture", 0);
+		ourShader->setFloat("material.shininess", 32.0f);
+
+		ourShader->setVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
+		ourShader->setVec3("dirLight.ambient", 0.1f, 0.1f, 0.1f);
+		ourShader->setVec3("dirLight.diffuse", 0.6f, 0.6f, 0.6f);
+		ourShader->setVec3("dirLight.specular", 0.8f, 0.8f, 0.8f);
+
+
 	}
 	int Display()
 	{
@@ -121,6 +137,9 @@ namespace DisPlay_ReSult
 
 			// activate shader
 			ourShader->use();
+			glActiveTexture(0);
+			glBindTexture(GL_TEXTURE_2D, Material_texture);
+			ourShader->setVec3("viewPos", opengl_camera.Position);
 
 			// pass projection matrix to shader (note that in this case it could change every frame)
 			glm::mat4 projection = glm::perspective(glm::radians(opengl_camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
@@ -135,7 +154,7 @@ namespace DisPlay_ReSult
 			glBindVertexArray(vao);
 			glBindBuffer(GL_ARRAY_BUFFER,vbo);
 			glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(float)*handmodel->Vertex_num * 3, handmodel->V_Final_array);
-
+			glBufferSubData(GL_ARRAY_BUFFER, sizeof(float)*handmodel->Vertex_num * 3, sizeof(float)*handmodel->Vertex_num * 3, handmodel->Normal_Final_array);
 			//glDrawArrays(GL_POINTS, 0, handmodel->Vertex_num);
 			
 			//问题参见：https://www.opengl.org/discussion_boards/showthread.php/141929-problem-w-glDrawElements
@@ -212,4 +231,43 @@ namespace DisPlay_ReSult
 		opengl_camera.ProcessMouseScroll(yoffset);
 	}
 
+
+	// utility function for loading a 2D texture from file
+	// ---------------------------------------------------
+	unsigned int loadTexture(char const * path)
+	{
+		unsigned int textureID;
+		glGenTextures(1, &textureID);
+
+		int width, height, nrComponents;
+		unsigned char *data = stbi_load(path, &width, &height, &nrComponents, 0);
+		if (data)
+		{
+			GLenum format;
+			if (nrComponents == 1)
+				format = GL_RED;
+			else if (nrComponents == 3)
+				format = GL_RGB;
+			else if (nrComponents == 4)
+				format = GL_RGBA;
+
+			glBindTexture(GL_TEXTURE_2D, textureID);
+			glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+			glGenerateMipmap(GL_TEXTURE_2D);
+
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+			stbi_image_free(data);
+		}
+		else
+		{
+			std::cout << "Texture failed to load at path: " << path << std::endl;
+			stbi_image_free(data);
+		}
+
+		return textureID;
+	}
 }

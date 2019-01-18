@@ -5,7 +5,9 @@ HandModel::HandModel()
 	this->LoadModel();
 	std::cout << "Load Model success "<<std::endl;
 
-	this->V_Final_array = new float[this->Vertex_num * 3];
+	this->V_Final_array = new float[this->Vertex_num * 3]();
+	this->Normal_Final_array = new float[this->Vertex_num * 3]();
+
 	//设置一些初始值
 	for (int i = 1; i < this->Kintree_table.cols(); ++i) this->Parent[i] = this->Kintree_table(0, i);
 
@@ -20,6 +22,9 @@ HandModel::HandModel()
 	this->J_shaped = Eigen::MatrixXf::Zero(this->Joints_num, 3);
 	this->V_posed = Eigen::MatrixXf::Zero(this->Vertex_num, 3);
 	this->V_Final = Eigen::MatrixXf::Zero(this->Vertex_num, 3);
+	this->Normal_Final = Eigen::MatrixXf::Zero(this->Vertex_num, 3);
+	this->J_Final = Eigen::MatrixXf::Zero(this->Joints_num, 3);
+
 
 	this->set_Shape_Params(Eigen::VectorXf::Zero(this->Num_betas));
 	this->UpdataModel();
@@ -308,6 +313,7 @@ void HandModel::UpdataModel()
 
 	this->Updata_V_rest();
 	this->LBS_Updata();
+	this->NormalUpdata();
 }
 
 
@@ -393,7 +399,48 @@ void HandModel::LBS_Updata()
 
 
 }
+void HandModel::NormalUpdata()
+{
+	this->Normal_Final.setZero();
 
+	for (int i = 0; i < this->Face_num; ++i)
+	{
+		Eigen::Vector3f A, B, C, BA, BC;
+		//这里我假设，如果假设错了，那么叉乘时候，就BC*BA变成BA*BC
+		//            A
+		//          /  \
+		//         B — C
+		A << this->V_Final(this->F(i, 0), 0), this->V_Final(this->F(i, 0), 1), this->V_Final(this->F(i, 0), 2);
+		B << this->V_Final(this->F(i, 1), 0), this->V_Final(this->F(i, 1), 1), this->V_Final(this->F(i, 1), 2);
+		C << this->V_Final(this->F(i, 2), 0), this->V_Final(this->F(i, 2), 1), this->V_Final(this->F(i, 2), 2);
+
+
+		BC << C - B;
+		BA << A - B;
+
+		Eigen::Vector3f nom(BC.cross(BA));
+
+		nom.normalize();
+
+		this->Normal_Final(this->F(i, 0), 0) += nom(0);
+		this->Normal_Final(this->F(i, 0), 1) += nom(1);
+		this->Normal_Final(this->F(i, 0), 2) += nom(2);
+
+		this->Normal_Final(this->F(i, 1), 0) += nom(0);
+		this->Normal_Final(this->F(i, 1), 1) += nom(1);
+		this->Normal_Final(this->F(i, 1), 2) += nom(2);
+
+		this->Normal_Final(this->F(i, 2), 0) += nom(0);
+		this->Normal_Final(this->F(i, 2), 1) += nom(1);
+		this->Normal_Final(this->F(i, 2), 2) += nom(2);
+
+	}
+
+	for (int i = 0; i < this->Vertex_num; ++i)
+	{
+		this->Normal_Final.row(i).normalize();
+	}
+}
 
 void HandModel::Save_as_obj()
 {

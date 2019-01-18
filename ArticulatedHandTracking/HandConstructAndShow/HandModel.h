@@ -26,6 +26,9 @@ public:
 
 	Eigen::MatrixXf J_Final;   //经过pose和trans之后某个姿态下的关节点
 
+	Eigen::MatrixXf Normal_Final;  //法向量
+	float *Normal_Final_array;
+
 private:
 	//控制手型的参数
 	//这些是控制形状的值
@@ -94,6 +97,10 @@ public:
 			this->V_Final_array[i * 3 + 0] = this->V_Final(i, 0) * 10.0f;
 			this->V_Final_array[i * 3 + 1] = this->V_Final(i, 1) * 10.0f;
 			this->V_Final_array[i * 3 + 2] = this->V_Final(i, 2) * 10.0f;
+
+			this->Normal_Final_array[i * 3 + 0] = this->Normal_Final(i, 0);
+			this->Normal_Final_array[i * 3 + 1] = this->Normal_Final(i, 1);
+			this->Normal_Final_array[i * 3 + 1] = this->Normal_Final(i, 2);
 		}
 	}
 	void Save_as_obj();
@@ -119,6 +126,7 @@ private:
 	void PoseSpaceBlend();
 
 	void LBS_Updata();
+	void NormalUpdata();
 
 private:
 

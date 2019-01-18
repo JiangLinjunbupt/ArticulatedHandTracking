@@ -38,6 +38,9 @@
     <ClInclude Include="shader.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="stb_image.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="fragment.glsl">
@@ -46,5 +49,10 @@
     <None Include="vertex.glsl">
       <Filter>资源文件</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="skin.png">
+      <Filter>资源文件</Filter>
+    </Image>
   </ItemGroup>
 </Project>
