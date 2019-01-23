@@ -53,7 +53,7 @@ void HandModel::LoadModel()
 	this->Load_J(J_filename.c_str());
 	this->Load_J_regressor(J_regressor_filename.c_str());
 	this->Load_F(f_filename.c_str());
-	this->Load_Hands_coeffs(hands_coeffs_filename.c_str());
+	//this->Load_Hands_coeffs(hands_coeffs_filename.c_str());   //这个好像没什么用，暂时不加载
 	this->Load_Hands_components(hands_components_filename.c_str());
 	this->Load_Hands_mean(hands_mean_filename.c_str());
 	this->Load_Kintree_table(kintree_table_filename.c_str());
@@ -309,6 +309,9 @@ void HandModel::UpdataModel()
 
 	//通过Pose构造Full_Hand_Pose
 	Eigen::MatrixXf selected_hands_component = this->Hands_components.topRows(this->Num_FingerPose);
+	this->Full_Hand_Params[0] = this->pose[0];
+	this->Full_Hand_Params[1] = this->pose[1];
+	this->Full_Hand_Params[2] = this->pose[2];
 	this->Full_Hand_Params.segment(this->Num_WristParams, this->Num_FingerParams) = selected_hands_component.transpose()*this->pose.segment(this->Num_WristPose, this->Num_FingerPose) + this->Hands_mean;
 
 	this->Updata_V_rest();

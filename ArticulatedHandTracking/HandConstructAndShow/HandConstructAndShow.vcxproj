@@ -160,6 +160,8 @@
     <ClInclude Include="stb_image.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Axis_fragment.glsl" />
+    <None Include="Axis_vertex.glsl" />
     <None Include="fragment.glsl" />
     <None Include="vertex.glsl" />
   </ItemGroup>

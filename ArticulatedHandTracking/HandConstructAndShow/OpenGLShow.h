@@ -18,6 +18,7 @@ using namespace std;
 namespace DisPlay_ReSult
 {
 	void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+	void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
 	void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 	void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 	void processInput(GLFWwindow *window);
@@ -32,6 +33,7 @@ namespace DisPlay_ReSult
 	float lastX = SCR_WIDTH / 2.0f;
 	float lastY = SCR_HEIGHT / 2.0f;
 	bool firstMouse = true;
+	bool mouse_leftbutton_press = false;
 
 	// timing
 	float deltaTime = 0.0f;	// time between current frame and last frame
@@ -40,10 +42,26 @@ namespace DisPlay_ReSult
 	HandModel * handmodel;
 	unsigned int vao, vbo, ebo;
 
+	unsigned int Axis_vao, Axis_vbo;
+
 	Shader *ourShader;
+	Shader *AxisShader;
 	unsigned int Material_texture;
 
 	GLFWwindow* window;
+
+
+	float Axis_vertex[] = {
+		0.0f , 0.0f , 0.0f ,
+		5.0f, 0.0f, 0.0f,
+
+		0.0f , 0.0f , 0.0f ,
+		0.0f,5.0f,0.0f,
+
+		0.0f , 0.0f , 0.0f ,
+		0.0f,0.0f,5.0f
+	};
+
 	int init()
 	{
 		// glfw: initialize and configure
@@ -64,6 +82,7 @@ namespace DisPlay_ReSult
 		}
 		glfwMakeContextCurrent(window);
 		glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+		glfwSetMouseButtonCallback(window, mouse_button_callback);
 		glfwSetCursorPosCallback(window, mouse_callback);
 		glfwSetScrollCallback(window, scroll_callback);
 
@@ -100,19 +119,31 @@ namespace DisPlay_ReSult
 		glEnableVertexAttribArray(1);
 
 
+
+		glGenVertexArrays(1, &Axis_vao);
+		glGenBuffers(1, &Axis_vbo);
+
+		glBindVertexArray(Axis_vao);
+		glBindBuffer(GL_ARRAY_BUFFER, Axis_vbo);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(Axis_vertex), Axis_vertex, GL_STATIC_DRAW);
+		glVertexAttribPointer(0, 3, GL_FLOAT, FALSE, 3 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(0);
+
+
 		Material_texture = loadTexture("skin.png");
 
 		ourShader = new Shader("vertex.glsl", "fragment.glsl");
 		ourShader->use();
 		ourShader->setInt("material.Material_texture", 0);
-		ourShader->setFloat("material.shininess", 32.0f);
+		ourShader->setFloat("material.shininess", 2.0f);
 
 		ourShader->setVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
-		ourShader->setVec3("dirLight.ambient", 0.1f, 0.1f, 0.1f);
-		ourShader->setVec3("dirLight.diffuse", 0.6f, 0.6f, 0.6f);
-		ourShader->setVec3("dirLight.specular", 0.8f, 0.8f, 0.8f);
+		ourShader->setVec3("dirLight.ambient", 0.5f, 0.5f, 0.5f);
+		ourShader->setVec3("dirLight.diffuse", 0.7f, 0.7f, 0.7f);
+		ourShader->setVec3("dirLight.specular", 0.2f, 0.2f, 0.2f);
 
 
+		AxisShader = new Shader("Axis_vertex.glsl", "Axis_fragment.glsl");
 	}
 	int Display()
 	{
@@ -161,6 +192,13 @@ namespace DisPlay_ReSult
 			//这里有个巨大的坑：只有GL_UNSIGNED_INT,	GL_UNSIGNED_BYTE 或者  GL_UNSIGNED_SHORT才能被允许，我最开始使用GL_INT一直画不出来图
 			glDrawElements(GL_TRIANGLES, handmodel->Face_num*3, GL_UNSIGNED_INT,0);
 
+			AxisShader->use();
+			AxisShader->setMat4("projection", projection);
+			AxisShader->setMat4("view", view);
+			glBindVertexArray(Axis_vao);
+			glLineWidth(5);
+			glDrawArrays(GL_LINES, 0, 6);
+
 			// glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
 			// -------------------------------------------------------------------------------
 			glfwSwapBuffers(window);
@@ -189,6 +227,12 @@ namespace DisPlay_ReSult
 			opengl_camera.ProcessKeyboard(LEFT, deltaTime);
 		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
 			opengl_camera.ProcessKeyboard(RIGHT, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+			opengl_camera.ProcessKeyboard(UP, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+			opengl_camera.ProcessKeyboard(DOWN, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
+			opengl_camera.ResetPostion();
 	}
 
 	// glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -203,25 +247,37 @@ namespace DisPlay_ReSult
 		SCR_HEIGHT = height;
 	}
 
-
+	void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
+	{
+		if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+			mouse_leftbutton_press = true;
+		if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE)
+		{
+			mouse_leftbutton_press = false;
+			firstMouse = true;
+		}
+	}
 	// glfw: whenever the mouse moves, this callback is called
 	// -------------------------------------------------------
 	void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 	{
-		if (firstMouse)
+		if (mouse_leftbutton_press)
 		{
+			if (firstMouse)
+			{
+				lastX = xpos;
+				lastY = ypos;
+				firstMouse = false;
+			}
+
+			float xoffset = xpos - lastX;
+			float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
+
 			lastX = xpos;
 			lastY = ypos;
-			firstMouse = false;
+
+			opengl_camera.ProcessMouseMovement(xoffset, yoffset);
 		}
-
-		float xoffset = xpos - lastX;
-		float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
-
-		lastX = xpos;
-		lastY = ypos;
-
-		opengl_camera.ProcessMouseMovement(xoffset, yoffset);
 	}
 
 	// glfw: whenever the mouse scroll wheel scrolls, this callback is called

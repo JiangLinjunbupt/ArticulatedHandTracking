@@ -94,9 +94,9 @@ public:
 	{
 		for (int i = 0; i < this->Vertex_num; ++i)
 		{
-			this->V_Final_array[i * 3 + 0] = this->V_Final(i, 0) * 10.0f;
-			this->V_Final_array[i * 3 + 1] = this->V_Final(i, 1) * 10.0f;
-			this->V_Final_array[i * 3 + 2] = this->V_Final(i, 2) * 10.0f;
+			this->V_Final_array[i * 3 + 0] = this->V_Final(i, 0) * 1.0f;
+			this->V_Final_array[i * 3 + 1] = this->V_Final(i, 1) * 1.0f;
+			this->V_Final_array[i * 3 + 2] = this->V_Final(i, 2) * 1.0f;
 
 			this->Normal_Final_array[i * 3 + 0] = this->Normal_Final(i, 0);
 			this->Normal_Final_array[i * 3 + 1] = this->Normal_Final(i, 1);
