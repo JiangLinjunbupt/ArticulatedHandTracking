@@ -32,7 +32,6 @@ void main()
 
 	depth = float(texture(tex_depth, uv).r);
 
-
 	float x = (vpoint[0] - CameraCenterX) / focal_length_x;
 	float y = (vpoint[1] - CameraCenterY) / focal_length_y;
 

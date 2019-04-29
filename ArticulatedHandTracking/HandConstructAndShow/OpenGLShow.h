@@ -119,7 +119,6 @@ namespace DisPlay_ReSult
 		glEnableVertexAttribArray(1);
 
 
-
 		glGenVertexArrays(1, &Axis_vao);
 		glGenBuffers(1, &Axis_vbo);
 
