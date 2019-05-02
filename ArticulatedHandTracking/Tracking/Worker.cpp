@@ -18,12 +18,10 @@ void Worker::init_worker()
 
 	Params = Eigen::VectorXf::Zero(Total_params_num);
 
-	//Params = handmodel->Hands_mean;
+	//Params.tail(Pose_params_num-6) = handmodel->Hands_mean;
 	handmodel->set_Shape_Params(Params.head(Shape_params_num));
 	handmodel->set_Pose_Params(Params.tail(Pose_params_num));
 	handmodel->UpdataModel();
-
-	kalman = new Kalman(handmodel);
 }
 
 void Worker::tracker()
@@ -52,10 +50,12 @@ void Worker::tracker()
 		//this->GloveDifferenceMaxMinLimit(linear_system);
 		//this->GloveDifference_VarLimit(linear_system);
 	}
-	this->TemporalLimit(linear_system, true);
-	this->TemporalLimit(linear_system, false);
+	//this->TemporalLimit(linear_system, true);
+	//this->TemporalLimit(linear_system, false);
+	this->TemporalParamsLimit(linear_system, true);
+	this->TemporalParamsLimit(linear_system, false);
 	kalman->track(linear_system, Params.head(Shape_params_num));
-	this->CollisionLimit(linear_system);
+	//this->CollisionLimit(linear_system);
 	this->Damping(linear_system);
 	if (itr < 2)
 		this->RigidOnly(linear_system);  //这个一定要放最后
@@ -137,7 +137,7 @@ void Worker::Fitting(LinearSystem& linear_system)
 		}
 	}
 	total_error = total_error / count;
-	std::cout << "第  " << itr << "  次迭代的误差为  ： " << total_error << std::endl;
+	//std::cout << "第  " << itr << "  次迭代的误差为  ： " << total_error << std::endl;
 
 	Eigen::MatrixXf JtJ = J.transpose()*J;
 	Eigen::VectorXf JTe = J.transpose()*e;
@@ -560,6 +560,42 @@ void Worker::TemporalLimit(LinearSystem& linear_system, bool first_order)
 	{
 		linear_system.lhs.block(Shape_params_num, Shape_params_num, Pose_params_num, Pose_params_num) += settings->Temporal_SecondOorder_weight*J_Tem.transpose()*J_Tem;
 		linear_system.rhs.tail(Pose_params_num) += settings->Temporal_SecondOorder_weight*J_Tem.transpose()*e_Tem;
+	}
+}
+
+void Worker::TemporalParamsLimit(LinearSystem& linear_system, bool first_order)
+{
+	Eigen::MatrixXf J_Tem = Eigen::MatrixXf::Identity(Pose_params_num - 6, Pose_params_num - 6);
+	Eigen::VectorXf e_Tem = Eigen::VectorXf::Zero(Pose_params_num - 6);
+
+	Eigen::MatrixXf joint_jacob;
+
+	if (temporal_Joint_Position.size() == 2)
+	{
+		for (int i = 0; i < Pose_params_num - 6; ++i)
+		{
+			int index = Shape_params_num + 6 + i;
+
+			if (first_order)
+			{
+				e_Tem(i) = temporal_finger_params.back()(i) - Params(index);
+			}
+			else
+			{
+				e_Tem(i) = 2 * temporal_finger_params.back()(i) - temporal_finger_params.front()(i) - Params(index);
+			}
+		}
+	}
+
+	if (first_order)
+	{
+		linear_system.lhs.block(Shape_params_num + 6, Shape_params_num + 6, Pose_params_num - 6, Pose_params_num - 6) += settings->Temporal_finger_params_FirstOrder_weight*J_Tem.transpose()*J_Tem;
+		linear_system.rhs.tail(Pose_params_num - 6) += settings->Temporal_finger_params_FirstOrder_weight*J_Tem.transpose()*e_Tem;
+	}
+	else
+	{
+		linear_system.lhs.block(Shape_params_num + 6, Shape_params_num + 6, Pose_params_num - 6, Pose_params_num - 6) += settings->Temporal_finger_params_SecondOorder_weight*J_Tem.transpose()*J_Tem;
+		linear_system.rhs.tail(Pose_params_num - 6) += settings->Temporal_finger_params_SecondOorder_weight*J_Tem.transpose()*e_Tem;
 	}
 }
 

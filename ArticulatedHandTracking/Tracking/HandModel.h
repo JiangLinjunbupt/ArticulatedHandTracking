@@ -354,6 +354,108 @@ public:
 			}
 		}
 	}
+
+	cv::Mat HandModel_depthMap;
+	cv::Mat HandModel_binaryMap;
+	void GenerateDepthMap()
+	{
+		int width = camera->width();
+		int heigth = camera->height();
+		HandModel_depthMap = cv::Mat(cv::Size(width, heigth), CV_16UC1, cv::Scalar(0));
+		HandModel_binaryMap = cv::Mat(cv::Size(width, heigth), CV_8UC1, cv::Scalar(0));
+
+		for (int faceidx = 0; faceidx < this->Face_num; ++faceidx)
+		{
+			int a_idx = this->F(faceidx, 0);
+			int b_idx = this->F(faceidx, 1);
+			int c_idx = this->F(faceidx, 2);
+
+			Eigen::Vector2f a_2D = camera->world_to_image(Eigen::Vector3f(this->V_Final(a_idx, 0), this->V_Final(a_idx, 1), this->V_Final(a_idx, 2)));
+			Eigen::Vector2f b_2D = camera->world_to_image(Eigen::Vector3f(this->V_Final(b_idx, 0), this->V_Final(b_idx, 1), this->V_Final(b_idx, 2)));
+			Eigen::Vector2f c_2D = camera->world_to_image(Eigen::Vector3f(this->V_Final(c_idx, 0), this->V_Final(c_idx, 1), this->V_Final(c_idx, 2)));
+
+			int x_min = min(min(a_2D.x(), b_2D.x()), c_2D.x());
+			int y_min = min(min(a_2D.y(), b_2D.y()), c_2D.y());
+			int x_max = max(max(a_2D.x(), b_2D.x()), c_2D.x());
+			int y_max = max(max(a_2D.y(), b_2D.y()), c_2D.y());
+
+			//插值深度，并且进行判断
+			float alpha0 = 0, alpha1 = 0;
+			float depthA = 0, depthB = 0, depthC = 0;
+
+			float d0 = 0, d1 = 0, d2 = 0;
+
+			Eigen::Vector2f vector_aTob = b_2D - a_2D;
+			Eigen::Vector2f vector_aToc = c_2D - a_2D;
+
+			depthA = this->V_Final(a_idx, 2);
+			depthB = this->V_Final(b_idx, 2);
+			depthC = this->V_Final(c_idx, 2);
+
+			for (int y = y_min; y <= y_max; ++y)
+			{
+				for (int x = x_min; x <= x_max; ++x)
+				{
+					if (x >= 0 && x < width && y >= 0 && y < heigth)
+					{
+						int a = (b_2D.x() - a_2D.x()) * (y - a_2D.y()) - (b_2D.y() - a_2D.y()) * (x - a_2D.x());
+						int b = (c_2D.x() - b_2D.x()) * (y - b_2D.y()) - (c_2D.y() - b_2D.y()) * (x - b_2D.x());
+						int c = (a_2D.x() - c_2D.x()) * (y - c_2D.y()) - (a_2D.y() - c_2D.y()) * (x - c_2D.x());
+
+						if ((a >= 0 && b >= 0 && c >= 0) || (a <= 0 && b <= 0 && c <= 0))
+						{
+							HandModel_binaryMap.at<uchar>(y, x) = 255;
+
+							Eigen::Vector2f p(x, y);
+							Eigen::Vector2f vector_aTop = p - a_2D;
+							Eigen::Vector2f vector_bTop = p - b_2D;
+
+							//叉乘计算面积
+							float S_abc = vector_aTob.x() * vector_aToc.y() - vector_aToc.x() * vector_aTob.y();
+							float S_abp = vector_aTob.x() * vector_aTop.y() - vector_aTop.x() * vector_aTob.y();
+							float S_apc = vector_aTop.x() * vector_aToc.y() - vector_aToc.x() * vector_aTop.y();
+
+							if (S_abc != 0) {
+								alpha1 = S_abp / S_abc;
+								alpha0 = S_apc / S_abc;
+							}
+							else {
+								//说明这些点共线
+
+								//如果 vector_aTob 和vector_aTop方向相同
+								if (vector_aTob.dot(vector_aTop) >= 0)
+								{
+									alpha1 = 0;
+									if (vector_aTob.y() != 0) {
+										alpha0 = (vector_aTop.y()) / (vector_aTob.y());
+									}
+									else { alpha0 = (vector_aTop.x()) / (vector_aTob.x()); }
+								}
+								else
+								{
+									alpha0 = 0;
+									if (vector_aToc.y() != 0) {
+										alpha1 = (vector_aTop.y()) / (vector_aToc.y());
+									}
+									else { alpha1 = (vector_aTop.x()) / (vector_aToc.x()); }
+								}
+							}
+
+							//重心坐标系相关知识
+							float depth = depthA + alpha0*(depthB - depthA) + alpha1*(depthC - depthA);
+							ushort v = HandModel_depthMap.at<ushort>(y,x);
+							if (v != 0) {
+								HandModel_depthMap.at<ushort>(y,x) = min(v, (ushort)depth);
+							}
+							else {
+								HandModel_depthMap.at<ushort>(y,x) = (ushort)depth;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 };
 
 

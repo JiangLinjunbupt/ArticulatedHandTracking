@@ -22,10 +22,25 @@ int main(int argc, char** argv)
 
 	int Height = 480;
 	int Width = 640;
+	string DatasetPath = "";
+	Camera* camera = new Camera(REALTIME);
+	switch (camera->_type)
+	{
+	case Dataset_MSRA_14:
+		DatasetPath = "F:\\数据集\\cvpr14_MSRAHandTrackingDB\\cvpr14_MSRAHandTrackingDB\\Subject1\\";
+		break;
+	case Dataset_MSRA_15:
+		DatasetPath = "F:\\数据集\\cvpr15_MSRAHandGestureDB\\cvpr15_MSRAHandGestureDB\\P0\\1\\";
+		break;
+	case Handy_teaser:
+		DatasetPath = "F:\\数据集\\teaser\\teaser\\";
+		break; 
+	default:
+		break;
+	}
 
-	Camera* camera = new Camera();
 	RealSenseSensor* sensor = new RealSenseSensor(camera);
-	sensor->start();
+	if(camera->_type == REALTIME || camera->_type == SHAPE_VERIFY) 	sensor->start();
 
 	DataFrame* dataframe = new DataFrame();
 	dataframe->Init(Width, Height);
@@ -36,7 +51,7 @@ int main(int argc, char** argv)
 	CorrespondFind* correspondfind = new CorrespondFind(camera, handmodel, dataframe);
 
 	Worker* worker = new Worker(handmodel, correspondfind, camera);
-
+	Evaluations* evalutions = new Evaluations(camera, handmodel);
 
 	DS::GetGloveData = GetSharedMemeryPtr;
 	DS::_camera = camera;
@@ -45,6 +60,10 @@ int main(int argc, char** argv)
 	DS::_handmodel = handmodel;
 	DS::_worker = worker;
 	DS::_dataset = dataset;
+	DS::_evalutions = evalutions;
+	DS::runtimeType = camera->_type;
+	DS::datasetPath = DatasetPath;
+
 
 	DS::init(argc, argv);
 	DS::start();

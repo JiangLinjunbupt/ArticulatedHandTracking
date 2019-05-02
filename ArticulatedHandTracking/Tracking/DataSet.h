@@ -23,7 +23,7 @@ class DataSet
 public:
 	DistanceTransform distance_transform;
 	void FetchDataFrame(DataFrame& dataframe);
-
+	void FetchDataSet(DataFrame& dataframe, RuntimeType type,string& dataSetPath,int currframeIdx);
 	int Joints_num;
 	int Vertex_num;
 	int Face_num;
@@ -79,6 +79,8 @@ private:
 
 	//与变换有关，存储雅各比矩阵
 	std::vector<std::vector<int>> joint_relation;
+
+
 public:
 	DataSet(Camera *_camera);
 	~DataSet() {};
@@ -180,4 +182,9 @@ private:
 
 		return result;
 	}
+
+private:
+	void fetch_DatasetMSRA_14(cv::Mat& depth_original, cv::Mat& hand_seg_binary,string& dataSetPath, int currframeIdx);
+	void fetch_DatasetMSRA_15(cv::Mat& depth_original, cv::Mat& hand_seg_binary, string& dataSetPath, int currframeIdx);
+	void fetch_Handy_teaser(cv::Mat& depth_original, cv::Mat& hand_seg_binary, string& dataSetPath, int currframeIdx);
 };

@@ -72,5 +72,5 @@ struct Collision
 
 enum RuntimeType
 {
-	REALTIME, SHAPE_VERIFY
+	REALTIME, SHAPE_VERIFY, Dataset_MSRA_14, Dataset_MSRA_15, Handy_teaser
 };

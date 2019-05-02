@@ -620,95 +620,405 @@ void DataSet::FetchDataFrame(DataFrame& dataframe)
 
 }
 
+void DataSet::FetchDataSet(DataFrame& dataframe, RuntimeType type, string& dataSetPath, int currframeIdx)
+{
+	int camera_width = camera->width();
+	int camera_height = camera->height();
+	cv::Mat depth_original = cv::Mat(cv::Size(camera_width, camera_height), CV_16UC1, cv::Scalar(0));
+	cv::Mat hand_seg_binary = cv::Mat(cv::Size(camera_width, camera_height), CV_8UC1, cv::Scalar(0));
+	//然后根据类型决定调用函数
+	//需要准备的数据为：1.二值图 ；2.二值图进过distancetransfom之后的引索；3.可见点的pointcloud
+	switch (type)
+	{
+	case Dataset_MSRA_14:
+		fetch_DatasetMSRA_14(depth_original, hand_seg_binary,dataSetPath, currframeIdx);
+		break;
+	case Dataset_MSRA_15:
+		fetch_DatasetMSRA_15(depth_original, hand_seg_binary, dataSetPath, currframeIdx);
+		break;
+	case Handy_teaser:
+		fetch_Handy_teaser(depth_original, hand_seg_binary, dataSetPath, currframeIdx);
+		break;
+	default:
+		cerr << "Invalid DataSetType , Cann't Fetch Input\n";
+		return;
+	}
 
-//void HandModel::Change()
-//{
-//
-//	this->Full_Hand_Pose.setZero();
-//
-//
-//	Eigen::MatrixXf selected_hands_component = this->Hands_components.topRows(this->Num_Pose);
-//	this->Full_Hand_Pose.segment(3, (this->Num_Params-3)) = selected_hands_component.transpose()*this->pose.segment(3, this->Num_Pose) + this->Hands_mean;
-//
-//
-//	Eigen::MatrixXf v_shaped = this->V_template;
-//	Eigen::MatrixXf J_shaped = Eigen::MatrixXf::Zero(this->Joints_num, 3);
-//
-//	Eigen::MatrixXf v_posed = Eigen::MatrixXf::Zero(this->Vertex_num, 3);
-//
-//	if (want_shapemodel)
-//	{
-//		for (int i = 0; i < betas.size(); ++i)
-//		{
-//			v_shaped += this->Shapedirs[i] * betas[i];
-//		}
-//
-//		J_shaped = this->J_regressor*v_shaped;
-//
-//	}
-//
-//
-//	v_posed += v_shaped;
-//
-//	std::vector<float> pose_vec = lortmin(this->Full_Hand_Pose.segment(3, 45));
-//
-//	for (int i = 0; i < pose_vec.size(); ++i)
-//	{
-//		v_posed += this->Posedirs[i] * pose_vec[i];
-//	}
-//
-//
-//
-//
-//
-//	std::vector<Eigen::Matrix4f> result(16,Eigen::Matrix4f::Identity());
-//
-//	result[0].block(0, 0, 3, 3) = rodrigues(this->Full_Hand_Pose[0], this->Full_Hand_Pose[1], this->Full_Hand_Pose[2]);
-//	result[0].block(0, 3, 3, 1) = J_shaped.row(0).transpose();
-//
-//
-//	for (int i = 1; i < this->Kintree_table.cols(); ++i)
-//	{
-//		Eigen::Matrix4f temp = Eigen::Matrix4f::Identity();
-//		temp.block(0, 0, 3, 3) = rodrigues(this->Full_Hand_Pose[i * 3 + 0], this->Full_Hand_Pose[i * 3 + 1], this->Full_Hand_Pose[i * 3 + 2]);
-//		temp.block(0, 3, 3, 1) = (J_shaped.row(i) - J_shaped.row(this->Parent[i])).transpose();
-//
-//		result[i] = result[this->Parent[i]] * temp;
-//	}
-//
-//
-//	std::vector<Eigen::Matrix4f> result2(result);
-//	for (int i = 0; i < result.size(); ++i)
-//	{
-//		Eigen::MatrixXf tmp = result[i].block(0, 0, 3, 3)*(J_shaped.row(i).transpose());
-//
-//		result2[i].block(0, 3, 3, 1) -= tmp;
-//	}
-//
-//
-//	std::vector<Eigen::Matrix4f> T(this->Weights.rows(), Eigen::Matrix4f::Zero());
-//
-//	for (int i = 0; i < T.size(); ++i)
-//	{
-//		Eigen::Matrix4f temp = Eigen::Matrix4f::Zero();
-//
-//		for (int j = 0; j < result2.size(); ++j)
-//		{
-//			temp += result2[j]*this->Weights(i, j);
-//		}
-//		T[i] = temp;
-//	}
-//
-//
-//	Eigen::MatrixXf v_final = Eigen::MatrixXf::Zero(this->Vertex_num, 3);
-//
-//	for (int i = 0; i < this->Vertex_num; ++i)
-//	{
-//
-//		Eigen::Vector4f temp(v_posed.row(i)(0), v_posed.row(i)(1), v_posed.row(i)(2), 1);
-//		v_final.row(i) = ((T[i] * temp).segment(0, 3)).transpose();
-//	}
-//
-//
-//
-//}
+	cv::flip(depth_original, dataframe.original_DepthMap, 0);
+	cv::flip(hand_seg_binary, dataframe.hand_BinaryMap, 0);
+	//然后进行distance_transform
+	this->distance_transform.exec(dataframe.hand_BinaryMap.data, 125);
+	std::copy(distance_transform.idxs_image_ptr(), distance_transform.idxs_image_ptr() + camera_width * camera_height, dataframe.idxs_image);
+
+
+	cv::Moments m = cv::moments(hand_seg_binary, true);
+	int center_x = m.m10 / m.m00;
+	int center_y = m.m01 / m.m00;
+
+	int temp = 0, R = 0, cx = 0, cy = 0;
+
+	int COLS = hand_seg_binary.cols;
+	int ROWS = hand_seg_binary.rows;
+
+	float range = 80.0f;
+
+	{
+		cv::Mat dist_image;
+		cv::distanceTransform(hand_seg_binary, dist_image, CV_DIST_L2, 3);
+
+		int search_area_min_col = center_x - range > 0 ? center_x - range : 0;
+		int search_area_max_col = center_x + range > COLS ? COLS - 1 : center_x + range;
+
+		int search_area_min_row = center_y - range > 0 ? center_y - range : 0;
+		int search_area_max_row = center_y + range > ROWS ? ROWS - 1 : center_y + range;
+
+		for (int row = search_area_min_row; row < search_area_max_row; row++)
+		{
+			for (int col = search_area_min_col; col < search_area_max_col; col++)
+			{
+				if (hand_seg_binary.at<uchar>(row, col) != 0)
+				{
+					temp = (int)dist_image.ptr<float>(row)[col];
+					if (temp > R)
+					{
+						R = temp;
+						cy = row;
+						cx = col;
+					}
+				}
+			}
+		}
+	}
+
+	int DownSampleRate;
+	int MaxPixelNUM = 192 * 2;
+	int NonZero = cv::countNonZero(hand_seg_binary);
+	if (NonZero > MaxPixelNUM)
+		DownSampleRate = sqrt(NonZero / MaxPixelNUM);
+	else
+		DownSampleRate = 1;
+
+	int num_palm = 0;
+
+	dataframe.handPointCloud.points.clear();
+	dataframe.palm_Center.setZero();
+	for (int row = 0; row < hand_seg_binary.rows; row += DownSampleRate) {
+		for (int col = 0; col < hand_seg_binary.cols; col += DownSampleRate) {
+			if (hand_seg_binary.at<uchar>(row, col) != 255) continue;
+
+			float depth_value = depth_original.at<unsigned short>(row, col);
+			//Eigen::Vector3f p_pixel = camera->depth_to_world((camera->height() - row - 1), col, depth_value);
+			Eigen::Vector3f p_pixel = camera->depth_to_world(col, (camera->height() - row - 1),depth_value);
+			dataframe.handPointCloud.points.push_back(pcl::PointXYZ(p_pixel[0], p_pixel[1], p_pixel[2]));
+
+			float distance_to_palm = sqrt((cx - col)*(cx - col)
+				+ (cy - row)*(cy - row));
+
+			if (distance_to_palm < R)
+			{
+				dataframe.palm_Center += p_pixel;
+				++num_palm;
+			}
+		}
+	}
+
+	if (num_palm > 0)
+	{
+		dataframe.palm_Center /= num_palm;
+	}
+}
+
+void DataSet::fetch_DatasetMSRA_14(cv::Mat& depth_original, cv::Mat& hand_seg_binary, string& dataSetPath, int currframeIdx)
+{
+	std::ostringstream stringstream;
+	stringstream << std::setw(6) << std::setfill('0') << currframeIdx;
+	string dataset_joint_filename = "joint.txt";
+	string dataset_depth_path = dataSetPath + stringstream.str() + "_depth.bin";
+	string dataset_joint_path = dataSetPath + dataset_joint_filename;
+
+	//读取原始深度图，用数组保存
+	int camera_width = camera->width();
+	int camera_height = camera->height();
+	float* pDepth = new float[camera_width *camera_height];
+	std::ifstream fin(dataset_depth_path, std::ios::binary);
+	if (!fin.is_open())
+		cout << "can not Open" << dataset_depth_path << endl;
+	fin.read((char*)pDepth, sizeof(float)*camera_height *camera_width);
+
+	//将读入的原始深度数组保存，存入图片中
+	for (int col = 0; col < camera_width; ++col)
+	{
+		for (int row = 0; row < camera_height; ++row)
+		{
+			if (pDepth[row*camera_width + col] != 0)
+			{
+				depth_original.at<ushort>(row, col) = pDepth[row*camera_width + col];
+
+				hand_seg_binary.at<uchar>(row, col) = 255;
+			}
+		}
+	}
+	fin.close();
+
+	//将数据集中的左手（至少看起来是左手，变成右手）
+	cv::flip(depth_original, depth_original, 1);
+	cv::flip(hand_seg_binary, hand_seg_binary, 1);
+
+	////读取关节点
+	//ifstream f_joint;
+	//f_joint.open(dataset_joint_path, ios::in);
+	//if (!f_joint.is_open())
+	//	cout << "can not Open" << dataset_joint_path << endl;
+
+	//int fileAmount;
+	//f_joint >> fileAmount;
+
+	//for (int i = 0; i <= index; ++i)
+	//{
+	//	for (int j = 0; j < JointNum; ++j)
+	//	{
+	//		f_joint >> joints_position_3D(j, 0)
+	//			>> joints_position_3D(j, 1)
+	//			>> joints_position_3D(j, 2);
+	//		joints_position_3D(j, 0) = -joints_position_3D(j, 0);
+	//		joints_position_3D(j, 2) = -joints_position_3D(j, 2);
+	//	}
+	//}
+	//f_joint.close();
+
+	delete[] pDepth;
+}
+void DataSet::fetch_DatasetMSRA_15(cv::Mat& depth_original, cv::Mat& hand_seg_binary, string& dataSetPath, int currframeIdx)
+{
+	std::ostringstream stringstream;
+	stringstream << std::setw(6) << std::setfill('0') << currframeIdx;
+	string dataset_joint_filename = "joint.txt";
+	string dataset_depth_path = dataSetPath + stringstream.str() + "_depth.bin";
+	string dataset_joint_path = dataSetPath + dataset_joint_filename;
+
+	//读取原始深度图，用数组保存，注意DatasetMSRA_15的数据格式不是整幅图像，而是图像中的ROI的上下左右边界，所以要先把这些读出来
+	FILE *pDepthFile = fopen(dataset_depth_path.c_str(), "rb");
+
+	int img_width, img_height;
+	int left, right, top, bottom;
+
+	fread(&img_width, sizeof(int), 1, pDepthFile);
+	fread(&img_height, sizeof(int), 1, pDepthFile);
+
+	fread(&left, sizeof(int), 1, pDepthFile);
+	fread(&top, sizeof(int), 1, pDepthFile);
+	fread(&right, sizeof(int), 1, pDepthFile);
+	fread(&bottom, sizeof(int), 1, pDepthFile);
+
+	int bounding_box_width = right - left;
+	int bounding_box_height = bottom - top;
+
+	int cur_pixel_num = bounding_box_width * bounding_box_height;
+	float* pDepth = new float[cur_pixel_num];
+	fread(pDepth, sizeof(float), cur_pixel_num, pDepthFile);
+	fclose(pDepthFile);
+
+	//将读入的原始深度数组保存，存入图片中
+	for (int row = top; row < bottom; ++row)
+	{
+		for (int col = left; col < right; ++col)
+		{
+			if (pDepth[(row - top)*bounding_box_width + (col - left)] != 0)
+			{
+				depth_original.at<ushort>(row, col) = pDepth[(row - top)*bounding_box_width + (col - left)];
+
+				hand_seg_binary.at<uchar>(row, col) = 255;
+			}
+
+		}
+	}
+	//将数据集中的左手（至少看起来是左手，变成右手）
+	cv::flip(depth_original, depth_original, 1);
+	cv::flip(hand_seg_binary, hand_seg_binary, 1);
+
+	////读取关节点
+	//ifstream f_joint;
+	//f_joint.open(dataset_joint_path, ios::in);
+	//if (!f_joint.is_open())
+	//	cout << "can not Open" << dataset_joint_path << endl;
+
+	//int fileAmount;
+	//f_joint >> fileAmount;
+
+	//for (int i = 0; i <= index; ++i)
+	//{
+	//	for (int j = 0; j < JointNum; ++j)
+	//	{
+	//		f_joint >> joints_position_3D(j, 0)
+	//			>> joints_position_3D(j, 1)
+	//			>> joints_position_3D(j, 2);
+	//		joints_position_3D(j, 0) = -joints_position_3D(j, 0);
+	//		joints_position_3D(j, 2) = -joints_position_3D(j, 2);
+	//	}
+	//}
+	//f_joint.close();
+
+	delete[] pDepth;
+}
+void DataSet::fetch_Handy_teaser(cv::Mat& depth_original, cv::Mat& hand_seg_binary, string& dataSetPath, int currframeIdx)
+{
+	//先读入彩色图和深度图
+	std::ostringstream stringstream;
+	stringstream << std::setw(7) << std::setfill('0') << currframeIdx;
+	depth_original = cv::imread(dataSetPath + "depth-" + stringstream.str() + ".png", cv::IMREAD_ANYDEPTH);
+	cv::Mat color_original = cv::imread(dataSetPath + "color-" + stringstream.str() + ".png");
+
+	//将数据集中的左手（至少看起来是左手，变成右手）
+	cv::flip(depth_original, depth_original, 1);
+	cv::flip(color_original, color_original, 1);
+
+	//然后根据腕带进行分割
+	float wband_size = 30.0f;
+	float depth_range = 150.0f;
+
+	//腕带的HSV颜色
+	cv::Scalar hsv_min = cv::Scalar(94, 111, 37);
+	cv::Scalar hsv_max = cv::Scalar(120, 255, 255);
+
+
+	float depth_farplane = 500.0f;
+	float depth_nearplane = 100.0f;
+	float crop_radius = 150;
+
+	cv::Mat color_hsv;
+	cv::Mat in_z_range;
+	cv::Mat depth_copy;
+	cv::Mat mask_wristband;
+
+	{
+		cv::cvtColor(color_original, color_hsv, CV_RGB2HSV);
+		cv::inRange(color_hsv, hsv_min, hsv_max, /*=*/ mask_wristband);
+
+		cv::inRange(depth_original, depth_nearplane, depth_farplane /*mm*/, /*=*/ in_z_range);
+		cv::bitwise_and(mask_wristband, in_z_range, mask_wristband);
+	}
+
+	{
+		cv::Mat labels, stats, centroids;
+		int num_components = cv::connectedComponentsWithStats(mask_wristband, labels, stats, centroids, 4 /*connectivity={4,8}*/);
+
+		///--- Generate array to sort
+		std::vector< int > to_sort(num_components);
+		std::iota(to_sort.begin(), to_sort.end(), 0 /*start from*/);
+
+		///--- Sort accoding to area
+		auto lambda = [stats](int i1, int i2) {
+			int area1 = stats.at<int>(i1, cv::CC_STAT_AREA);
+			int area2 = stats.at<int>(i2, cv::CC_STAT_AREA);
+			return area1>area2;
+		};
+		std::sort(to_sort.begin(), to_sort.end(), lambda);
+
+		if (num_components<2 /*not found anything beyond background*/) {
+			//_has_useful_data = false;
+		}
+		else
+		{
+			//_has_useful_data = true;
+
+			///--- Select 2nd biggest component
+			mask_wristband = (labels == to_sort[1]);
+			//_wristband_found = true;
+		}
+	}
+
+	{
+		///--- Extract wristband average depth
+		std::pair<float, int> avg;
+		for (int row = 0; row < mask_wristband.rows; ++row) {
+			for (int col = 0; col < mask_wristband.cols; ++col) {
+				float depth_wrist = depth_original.at<ushort>(row, col);
+				if (mask_wristband.at<uchar>(row, col) == 255) {
+					if ((depth_wrist>depth_nearplane) && (depth_wrist<depth_farplane)) {
+						avg.first += depth_wrist;
+						avg.second++;
+					}
+				}
+			}
+		}
+
+		ushort depth_wrist = (avg.second == 0) ? depth_nearplane : avg.first / avg.second;
+
+		///--- First just extract pixels at the depth range of the wrist
+		cv::inRange(depth_original, depth_wrist - depth_range, /*mm*/
+			depth_wrist + depth_range, /*mm*/
+			hand_seg_binary /*=*/);
+	}
+
+	Eigen::Vector3f _wband_center = Eigen::Vector3f(0, 0, 0);  //也就是wrist的3D点云，将腕带上的蓝色点深度点，反投影到世界坐标的点云中。
+	Eigen::Vector3f _wband_dir = Eigen::Vector3f(0, 0, -1);
+	{
+		///--- Compute MEAN
+		int counter = 0;
+		for (int row = 0; row < mask_wristband.rows; ++row) {
+			for (int col = 0; col < mask_wristband.cols; ++col) {
+				if (mask_wristband.at<uchar>(row, col) != 255) continue;
+				float depth_value = depth_original.at<unsigned short>(row, col);
+				_wband_center += camera->depth_to_world(col, (camera->height() - row - 1), depth_value);
+				counter++;
+			}
+		}
+		_wband_center /= counter;
+		std::vector<Eigen::Vector3f> pts; pts.push_back(_wband_center);
+
+		///--- Compute Covariance
+		static std::vector<Eigen::Vector3f> points_pca;
+		points_pca.reserve(100000);
+		points_pca.clear();
+		for (int row = 0; row < hand_seg_binary.rows; ++row) {
+			for (int col = 0; col < hand_seg_binary.cols; ++col) {
+				if (hand_seg_binary.at<uchar>(row, col) != 255) continue;
+				float depth_value = depth_original.at<unsigned short>(row, col);
+				Eigen::Vector3f p_pixel = camera->depth_to_world(col, (camera->height() - row - 1), depth_value);
+				if ((p_pixel - _wband_center).norm()<100) {
+					// sensor_silhouette.at<uchar>(row,col) = 255;
+					points_pca.push_back(p_pixel);
+				}
+				else {
+					// sensor_silhouette.at<uchar>(row,col) = 0;
+				}
+			}
+		}
+		if (points_pca.size() == 0) return;
+		///--- Compute PCA
+		Eigen::Map<Matrix_3xN> points_mat(points_pca[0].data(), 3, points_pca.size());
+		for (int i : {0, 1, 2})
+			points_mat.row(i).array() -= _wband_center(i);
+		Eigen::Matrix3f cov = points_mat*points_mat.adjoint();
+		Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eig(cov);
+		_wband_dir = eig.eigenvectors().col(2);
+
+		///--- Allow wrist to point downward
+		if (_wband_dir.y()<0)
+			_wband_dir = -_wband_dir;
+	}
+
+	{
+		wband_size = 10;
+		float crop_radius_sq = crop_radius*crop_radius;
+		Eigen::Vector3f crop_center = _wband_center + _wband_dir*(crop_radius - wband_size /*mm*/);
+		//Vector3 crop_center = _wband_center + _wband_dir*( crop_radius + wband_size /*mm*/);
+
+		for (int row = 0; row < hand_seg_binary.rows; ++row) {
+			for (int col = 0; col < hand_seg_binary.cols; ++col) {
+				if (hand_seg_binary.at<uchar>(row, col) != 255) continue;
+				float depth_value = depth_original.at<unsigned short>(row, col);
+				Eigen::Vector3f p_pixel = camera->depth_to_world(col, (camera->height() - row - 1), depth_value);
+				if ((p_pixel - crop_center).squaredNorm() < crop_radius_sq)
+					hand_seg_binary.at<uchar>(row, col) = 255;
+				else
+					hand_seg_binary.at<uchar>(row, col) = 0;
+			}
+		}
+	}
+
+	int DILATION_SIZE = 9;
+	cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * DILATION_SIZE + 1, 2 * DILATION_SIZE + 1));
+	cv::dilate(mask_wristband, mask_wristband, element);
+	hand_seg_binary.setTo(0, mask_wristband != 0);
+}

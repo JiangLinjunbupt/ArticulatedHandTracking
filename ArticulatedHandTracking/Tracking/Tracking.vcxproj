@@ -157,6 +157,7 @@
     <ClInclude Include="DataFrame.h" />
     <ClInclude Include="DataSet.h" />
     <ClInclude Include="DistanceTransform.h" />
+    <ClInclude Include="Evaluations.h" />
     <ClInclude Include="HandModel.h" />
     <ClInclude Include="Kalman.h" />
     <ClInclude Include="Opengl_display.h" />
@@ -168,6 +169,7 @@
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="CorrespondFind.cpp" />
     <ClCompile Include="DataSet.cpp" />
+    <ClCompile Include="Evaluations.cpp" />
     <ClCompile Include="HandModel.cpp" />
     <ClCompile Include="Kalman.cpp" />
     <ClCompile Include="RealSenseSensor.cpp" />

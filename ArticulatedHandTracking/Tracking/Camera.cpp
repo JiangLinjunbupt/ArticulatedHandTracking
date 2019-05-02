@@ -1,17 +1,49 @@
 #include "Camera.h"
 
 
-Camera::Camera()
+Camera::Camera(RuntimeType type):_type(type)
 {
-	//以下所有参数均可使用MATLAB自带的相机标定程序进行测量
-	_width = 320;
-	_height = 240;
-	_zFar = 800;
-	_zNear = 50;
-	_CameraCenterX = 160.0f;    //通常情况下是 _width/2
-	_CameraCenterY = 120.0f;    //通常情况下是 _height/2
-	_focal_length_x = 224.502f;
-	_focal_length_y = 230.494f;
+	switch (type)
+	{
+	case Dataset_MSRA_14:
+		//从说明文件中得出
+		_width = 320;
+		_height = 240;
+		_focal_length_x = 241.42f;
+		_focal_length_y = 241.42f;
+		_CameraCenterX = 160.0f;
+		_CameraCenterY = 120.0f;
+		break;
+	case Dataset_MSRA_15:
+		//从说明文件中得出
+		_width = 320;
+		_height = 240;
+		_focal_length_x = 241.42f;
+		_focal_length_y = 241.42f;
+		_CameraCenterX = 160.0f;
+		_CameraCenterY = 120.0f;
+		break;
+	case Handy_teaser:
+		//这个参数和hmodel工程中的camera设置一样
+		_width = 320;
+		_height = 240;
+		_focal_length_x = 224.502;
+		_focal_length_y = 230.494;
+		_CameraCenterX = 160.0f;
+		_CameraCenterY = 120.0f;
+		break;
+	default:
+		//以下所有参数均可使用MATLAB自带的相机标定程序进行测量
+		_width = 320;
+		_height = 240;
+		_zFar = 800;
+		_zNear = 50;
+		_CameraCenterX = 160.0f;    //通常情况下是 _width/2
+		_CameraCenterY = 120.0f;    //通常情况下是 _height/2
+		_focal_length_x = 224.502f;
+		_focal_length_y = 230.494f;
+		break;
+	}
 
 	///--- Assemble projection matrix
 	auto kinectproj = [=]() {
@@ -37,9 +69,9 @@ Camera::Camera()
 //          z /                                                                |                  |y
 //                                                                             |y                 |
 //                                      因此，要对深度图进行cv::filp(img,img,0)绕x轴翻转，得到    O-------x这样的坐标之后，再进行转世界坐标系
-Eigen::Vector3f Camera::depth_to_world(float i, float j, float depth) {
+Eigen::Vector3f Camera::depth_to_world(float col, float row, float depth) {
 	//Eigen::Vector3f wrld = iproj * Eigen::Vector3f(i*depth, (height() - j - 1)*depth, depth);
-	Eigen::Vector3f wrld = iproj * Eigen::Vector3f(i*depth, j*depth, depth);
+	Eigen::Vector3f wrld = iproj * Eigen::Vector3f(col*depth, row*depth, depth);
 	return wrld;
 }
 

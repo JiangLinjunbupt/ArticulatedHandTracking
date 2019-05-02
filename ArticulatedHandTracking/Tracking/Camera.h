@@ -20,7 +20,8 @@ private:
 	float    _focal_length_y = nan();
 
 public:
-	Camera();
+	Camera(RuntimeType type);
+	RuntimeType _type;
 public:
 	int width() const { return _width; }
 	int height() const { return _height; }
@@ -43,7 +44,7 @@ public:
 	Matrix_2x3 projection_jacobian(const Eigen::Vector3f& p);
 
 public:
-	Eigen::Vector3f depth_to_world(float i, float j, float depth);
+	Eigen::Vector3f depth_to_world(float col, float row, float depth);
 
 	////这个是投影的正常步骤，但是投影到图像平面后，还需要经过关于x轴的反转，原因见cpp文件
 	Eigen::Vector2f world_to_image(const Eigen::Vector3f& wrld);

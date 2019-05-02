@@ -11,6 +11,7 @@
 #include"HandModel.h"
 #include"Worker.h"
 #include"DataSet.h"
+#include"Evaluations.h"
 #include<chrono>
 
 using namespace std::chrono;
@@ -28,11 +29,16 @@ namespace DS {
 	CorrespondFind* _correspondfind;
 	HandModel* _handmodel;
 	DataSet* _dataset;
+	Evaluations* _evalutions;
 
-	RuntimeType runtimeType = REALTIME;
+
+	RuntimeType runtimeType;
+	string datasetPath;
+	int currentFrameIdx = 300;
 
 	bool pause = false;
 	bool track = false;
+	bool show_evalution = true;
 
 	//10，12，13，16，18（显著），19，22，23（显著），25，26（显著）
 	int ShapeVerify_SubIdx = 26;
@@ -59,6 +65,8 @@ namespace DS {
 	void UpdataDataSetUsingGlove();
 	void RealTimeFunc();
 	void ShapeVerfyFunc();
+	void RunDatasetFunc();
+
 	//定义光照
 	void light() {
 
@@ -120,6 +128,11 @@ namespace DS {
 		{
 			_worker->ResetShapeParmas();
 		}
+		if (key == 'n')
+		{
+			currentFrameIdx++;
+			show_evalution = true;
+		}
 	}
 	void mouseClick(int button, int state, int x, int y) {
 		control.mouse_click = 1;
@@ -136,7 +149,7 @@ namespace DS {
 		glutPostRedisplay();
 	}
 
-
+#pragma region SetOfDraw
 	//一系列绘制函数
 	void draw_DataSetVisiblePoint()
 	{
@@ -402,6 +415,7 @@ namespace DS {
 		glVertex3f(90, -50, 450 + 100);
 		glEnd();
 	}
+#pragma endregion SetOfDraw
 	void draw() {
 
 		//glClearColor(1, 1, 0.8, 1);
@@ -410,14 +424,18 @@ namespace DS {
 		glMatrixMode(GL_MODELVIEW);
 		gluPerspective(180, 1.5, -1000, 1000);
 		glLoadIdentity();
-		/*	control.gx = _dataframe->palm_Center(0);
-		control.gy = _dataframe->palm_Center(1);
-		control.gz = _dataframe->palm_Center(2);*/
+		control.gx = _correspondfind->my_dataframe->palm_Center(0);
+		control.gy = _correspondfind->my_dataframe->palm_Center(1);
+		control.gz = _correspondfind->my_dataframe->palm_Center(2);
 
 		//这个值是根据palm_Center设置的，因为如果使用palm_Center的话，跳动会变得非常明显
-		control.gx = 90;
-		control.gy = -50;
-		control.gz = 450;
+		if (_camera->_type == REALTIME)
+		{
+			control.gx = 90;
+			control.gy = -50;
+			control.gz = 450;
+		}
+
 
 		double r = 300;
 		double x = r*cos(control.roty)*sin(control.rotx);
@@ -428,10 +446,10 @@ namespace DS {
 
 		if (show_handmodel) draw_HandModel();
 		if (show_Dataset && runtimeType == SHAPE_VERIFY) draw_DatasetModel();
-		if (runtimeType == REALTIME) draw_HandPointCloud();
+		if (runtimeType != SHAPE_VERIFY) draw_HandPointCloud();
 		if (runtimeType == SHAPE_VERIFY) draw_DataSetVisiblePoint();
 
-		draw_HandModel_wireFrame();
+		//draw_HandModel_wireFrame();
 		draw_CollisionSphere();
 		show_Collision();
 		//draw_skeleton();
@@ -442,30 +460,47 @@ namespace DS {
 	}
 
 	void idle() {
-
-		//_mysensor->concurrent_fetch_streams(*_dataframe);
-		//double min;
-		//double max;
-		//cv::minMaxIdx(_dataframe->original_DepthMap, &min, &max);
-		//cv::Mat normalized_depth;
-		//_dataframe->original_DepthMap.convertTo(normalized_depth, CV_8UC1, 255.0 / (max - min), 0);  //src.convertTo(dst,type,scale,shift)其中  dst(i) = src(i)* scale + shift;
-		//cv::Mat color_map;
-		//cv::applyColorMap(normalized_depth, color_map, cv::COLORMAP_COOL);       //灰度图转换成伪彩色，第二个参数是12种伪彩色中的一种
-		//cv::flip(color_map, color_map, 0);
-		//cv::imshow("depth", color_map);
-		//cv::Mat hand;
-		//cv::flip(_dataframe->hand_BinaryMap, hand, 0);
-		//cv::imshow("Hand", hand);
-		//cv::waitKey(20);
-
-		if (runtimeType == REALTIME)
+		switch (runtimeType)
 		{
+		case REALTIME:
 			RealTimeFunc();
-		}
-		else if (runtimeType == SHAPE_VERIFY)
-		{
+			break;
+		case SHAPE_VERIFY:
 			ShapeVerfyFunc();
+			break;
+		case Dataset_MSRA_14:
+		case Dataset_MSRA_15:
+		case Handy_teaser:
+			RunDatasetFunc();
+			break;
+		default:
+			break;
 		}
+
+		//_handmodel->GenerateDepthMap();
+		//if (show_evalution&& track)
+		//{
+		//	_evalutions->Compute_Metric(_correspondfind->my_dataframe, currentFrameIdx);
+		//	show_evalution = false;
+		//}
+
+		//cv::Mat binary_Mat;
+		//cv::flip(_handmodel->HandModel_binaryMap, binary_Mat, 0);
+		//cv::imshow("binar-", binary_Mat);
+
+
+		//double max, min;
+		//cv::minMaxIdx(_handmodel->HandModel_depthMap, &min, &max);
+		//cv::Mat normal_map;
+		//_handmodel->HandModel_depthMap.convertTo(normal_map, CV_8U, 255.0 / (max - min), -min * 255.0 / (max - min));
+		//cv::Mat junheng_Map;
+		//cv::equalizeHist(normal_map, junheng_Map);
+		//cv::Mat color_map;
+		//cv::applyColorMap(junheng_Map, color_map, cv::COLORMAP_COOL);
+		//cv::flip(color_map, color_map, 0);
+		//color_map.setTo(cv::Scalar(255, 255, 255), binary_Mat == 0);
+		//cv::imshow("generated depth", color_map);
+
 		glutPostRedisplay();
 	}
 
@@ -558,6 +593,7 @@ namespace DS {
 		}
 	}
 
+
 	void RealTimeFunc()
 	{
 		if (!pause)
@@ -584,6 +620,11 @@ namespace DS {
 					_correspondfind->my_dataframe->handmodel_visibleMap = _handmodel->HandVisible_IndexMap.clone();
 					_correspondfind->Find_2();
 				}
+			}
+			else
+			{
+				_worker->init_worker();
+				_worker->ResetShapeParmas();
 			}
 
 			auto tp_5 = system_clock::now();
@@ -628,7 +669,6 @@ namespace DS {
 																			  cout << " 最终误差为： " << _worker->total_error << endl << endl;*/
 		}
 	}
-
 	void ShapeVerfyFunc()
 	{
 		if (!pause)
@@ -656,6 +696,57 @@ namespace DS {
 
 				std::cout << "error is : " << total_error << std::endl;
 			}
+			else
+			{
+				_worker->init_worker();
+				_worker->ResetShapeParmas();
+			}
+
+			{
+				cv::Mat hand;
+				cv::flip(_correspondfind->my_dataframe->hand_BinaryMap, hand, 0);
+				//cv::imshow("Hand", hand);
+
+				cv::Mat handVisibleMap;
+				cv::flip(_handmodel->HandVisible_Map, handVisibleMap, 0);
+				cv::Mat HandVisiblePointMap = cv::Mat(handVisibleMap.size(), CV_8UC3, cv::Scalar(255, 255, 255));
+				HandVisiblePointMap.setTo(cv::Scalar(0, 0, 0), handVisibleMap > 0);
+
+				cv::Mat handColored = cv::Mat(hand.size(), CV_8UC3, cv::Scalar(255, 255, 255));
+				handColored.setTo(cv::Scalar(0, 0, 255), hand > 0);
+
+				cv::Mat MixShow;
+				cv::addWeighted(handColored, 0.5, HandVisiblePointMap, 0.5, 0, MixShow);
+				cv::imshow("mixShow", MixShow);
+			}
+		}
+	}
+
+	void RunDatasetFunc()
+	{
+		if (!pause)
+		{
+			_dataset->FetchDataSet(*_correspondfind->my_dataframe, runtimeType,datasetPath,currentFrameIdx);
+			UpdataHandUsingGlove();
+			_correspondfind->my_dataframe->handmodel_visibleMap = _handmodel->HandVisible_IndexMap.clone();
+			//_correspondfind->Find();
+			_correspondfind->Find_2();
+
+
+			if (track)
+			{
+				for (int i = 0; i < _worker->settings->max_itr; ++i)
+				{
+					_worker->tracker();
+					_correspondfind->my_dataframe->handmodel_visibleMap = _handmodel->HandVisible_IndexMap.clone();
+					_correspondfind->Find_2();
+				}
+			}
+			else
+			{
+				_worker->init_Params();
+			}
+
 
 			{
 				cv::Mat hand;

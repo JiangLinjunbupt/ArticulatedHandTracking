@@ -48,6 +48,9 @@
     <ClInclude Include="Worker.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Evaluations.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Camera.cpp">
@@ -72,6 +75,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="源.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Evaluations.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
